@@ -6,6 +6,7 @@ import logging
 import random
 from typing import List, Dict, Any
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .plex_client import PlexClient
 from .tunarr_client import TunarrClient
@@ -201,21 +202,35 @@ def sync_letterboxd_to_channel(
 
     logger.info(f"Found {len(letterboxd_movies)} movies in Letterboxd list")
 
-    # Search for each movie in Plex
+    # Search for each movie in Plex (parallelized for speed)
     plex_items = []
     not_found = []
 
-    for movie in letterboxd_movies:
+    def search_single_movie(movie):
+        """Helper function to search for a single movie."""
         title = movie['title']
         year = movie.get('year')
-
-        logger.info(f"Searching Plex for: {title}" + (f" ({year})" if year else ""))
         plex_movie = plex_client.search_movie(title, year)
+        return (movie, plex_movie)
 
-        if plex_movie:
-            plex_items.append(plex_movie)
-        else:
-            not_found.append(f"{title}" + (f" ({year})" if year else ""))
+    logger.info(f"Searching Plex library for {len(letterboxd_movies)} movies (parallelized)...")
+
+    # Use ThreadPoolExecutor to parallelize searches (max 10 concurrent requests)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        # Submit all search tasks
+        future_to_movie = {executor.submit(search_single_movie, movie): movie for movie in letterboxd_movies}
+
+        # Process results as they complete
+        for future in as_completed(future_to_movie):
+            movie, plex_movie = future.result()
+            title = movie['title']
+            year = movie.get('year')
+
+            if plex_movie:
+                plex_items.append(plex_movie)
+                logger.debug(f"Found: {title}" + (f" ({year})" if year else ""))
+            else:
+                not_found.append(f"{title}" + (f" ({year})" if year else ""))
 
     logger.info(f"Found {len(plex_items)} / {len(letterboxd_movies)} movies in Plex")
 
