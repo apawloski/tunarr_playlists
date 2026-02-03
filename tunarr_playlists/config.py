@@ -21,6 +21,7 @@ class ChannelConfig:
         self.number = data.get('number')
         self.source = data.get('source', {})
         self.replace_existing = data.get('replace_existing', True)
+        self.randomize = data.get('randomize', True)
 
         # Validate required fields
         if not self.name:

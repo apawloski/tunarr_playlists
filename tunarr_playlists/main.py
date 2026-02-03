@@ -3,6 +3,7 @@
 import os
 import sys
 import logging
+import random
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 
@@ -94,7 +95,8 @@ def sync_playlist_to_channel(
     playlist_name: str,
     channel_name: str,
     channel_number: int,
-    replace_existing: bool = True
+    replace_existing: bool = True,
+    randomize: bool = True
 ) -> None:
     """Sync a Plex playlist to a Tunarr channel.
 
@@ -105,6 +107,7 @@ def sync_playlist_to_channel(
         channel_name: Name for Tunarr channel
         channel_number: Channel number to use
         replace_existing: Whether to replace existing programming
+        randomize: Whether to randomize the order of programs
     """
     logger.info(f"Starting sync: '{playlist_name}' -> '{channel_name}' (#{channel_number})")
 
@@ -151,6 +154,11 @@ def sync_playlist_to_channel(
     # Convert Plex items to Tunarr programs
     programs = convert_plex_to_tunarr_programs(plex_items, media_source_id)
 
+    # Randomize if requested
+    if randomize:
+        logger.info("Randomizing program order")
+        random.shuffle(programs)
+
     # Add programs to channel
     logger.info(f"Adding {len(programs)} programs to channel")
     tunarr_client.add_programs_to_channel(channel['id'], programs)
@@ -166,7 +174,8 @@ def sync_letterboxd_to_channel(
     letterboxd_url: str,
     channel_name: str,
     channel_number: int,
-    replace_existing: bool = True
+    replace_existing: bool = True,
+    randomize: bool = True
 ) -> None:
     """Sync a Letterboxd list to a Tunarr channel.
 
@@ -177,6 +186,7 @@ def sync_letterboxd_to_channel(
         channel_name: Name for Tunarr channel
         channel_number: Channel number to use
         replace_existing: Whether to replace existing programming
+        randomize: Whether to randomize the order of programs
     """
     logger.info(f"Starting Letterboxd sync: {letterboxd_url} -> '{channel_name}' (#{channel_number})")
 
@@ -253,6 +263,11 @@ def sync_letterboxd_to_channel(
     # Convert Plex items to Tunarr programs
     programs = convert_plex_to_tunarr_programs(plex_items, media_source_id)
 
+    # Randomize if requested
+    if randomize:
+        logger.info("Randomizing program order")
+        random.shuffle(programs)
+
     # Add programs to channel
     logger.info(f"Adding {len(programs)} programs to channel")
     tunarr_client.add_programs_to_channel(channel['id'], programs)
@@ -292,7 +307,8 @@ def process_channel(
                 playlist_name=channel_config.playlist_name,
                 channel_name=channel_config.name,
                 channel_number=channel_config.number,
-                replace_existing=channel_config.replace_existing
+                replace_existing=channel_config.replace_existing,
+                randomize=channel_config.randomize
             )
         elif channel_config.is_letterboxd:
             sync_letterboxd_to_channel(
@@ -301,7 +317,8 @@ def process_channel(
                 letterboxd_url=channel_config.letterboxd_url,
                 channel_name=channel_config.name,
                 channel_number=channel_config.number,
-                replace_existing=channel_config.replace_existing
+                replace_existing=channel_config.replace_existing,
+                randomize=channel_config.randomize
             )
 
         return True

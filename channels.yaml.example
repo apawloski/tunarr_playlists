@@ -10,6 +10,8 @@ channels:
       playlist_name: "Action Movies"
     # Optional: set to false to append to existing programming instead of replacing
     replace_existing: true
+    # Optional: set to false to keep original order (default: true)
+    randomize: true
 
   # Example: Letterboxd List Channel
   - name: "Oscar Nominees 2026"
@@ -18,6 +20,7 @@ channels:
       type: letterboxd
       url: "https://letterboxd.com/crew/list/every-film-nominated-for-a-2026-academy-award/"
     replace_existing: true
+    randomize: true
 
   # Example: Another Letterboxd List
   - name: "Top 250 Films"
@@ -26,6 +29,7 @@ channels:
       type: letterboxd
       url: "https://letterboxd.com/dave/list/official-top-250-narrative-feature-films/"
     replace_existing: true
+    randomize: true
 
   # You can add as many channels as you want!
   # Just copy the structure above and modify the details

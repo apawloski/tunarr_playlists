@@ -7,6 +7,7 @@ A Python tool to sync Plex playlists and Letterboxd lists to Tunarr channels. Au
 - **Multi-channel management**: Define and sync dozens of channels in a single configuration file
 - **Plex playlist sync**: Creates Tunarr channels from Plex playlists
 - **Letterboxd list sync**: Creates Tunarr channels from Letterboxd lists
+- **Content randomization**: Randomize channel content order for variety (enabled by default)
 - **Automatic Plex search**: Searches your Plex library for movies from Letterboxd lists
 - **Smart matching**: Matches movies by title and year for accuracy
 - **Graceful handling**: Handles cases where Letterboxd movies aren't in Plex
@@ -58,6 +59,7 @@ cp channels.yaml.example channels.yaml
      - For Plex playlists: `type: plex_playlist` and `playlist_name`
      - For Letterboxd lists: `type: letterboxd` and `url`
    - `replace_existing`: Whether to replace or append to existing programming (default: true)
+   - `randomize`: Whether to randomize program order (default: true)
 
 ## Configuration Details
 
@@ -72,6 +74,7 @@ The `channels.yaml` file uses YAML format. Each channel must have:
   - For `plex_playlist`: Include `playlist_name`
   - For `letterboxd`: Include `url`
 - **replace_existing** (optional): `true` to replace channel content, `false` to append (default: `true`)
+- **randomize** (optional): `true` to randomize program order, `false` to keep original order (default: `true`)
 
 You can have as many channels as you want - the tool will process them all in order!
 
@@ -162,6 +165,7 @@ channels:
       type: plex_playlist
       playlist_name: "Action Movies"
     replace_existing: true
+    randomize: true  # Shuffle the order (default)
 
   # Letterboxd list channel
   - name: "Oscar Nominees 2026"
@@ -170,6 +174,7 @@ channels:
       type: letterboxd
       url: "https://letterboxd.com/crew/list/every-film-nominated-for-a-2026-academy-award/"
     replace_existing: true
+    randomize: true
 
   # Another Letterboxd list
   - name: "Criterion Collection"
@@ -178,6 +183,7 @@ channels:
       type: letterboxd
       url: "https://letterboxd.com/dave/list/criterion-collection/"
     replace_existing: true
+    randomize: false  # Keep original order
 
   # TV Shows playlist
   - name: "Sitcoms"
@@ -186,6 +192,7 @@ channels:
       type: plex_playlist
       playlist_name: "Best Sitcoms"
     replace_existing: false  # Append instead of replace
+    randomize: true
 ```
 
 Running `uv run tunarr-sync` will process all 4 channels automatically!
