@@ -133,3 +133,67 @@ class PlexClient:
         except Exception as e:
             logger.error(f"Error listing playlists: {e}")
             raise
+
+    def search_movie(self, title: str, year: Optional[int] = None) -> Optional[dict]:
+        """Search for a movie by title and optionally year.
+
+        Args:
+            title: Movie title
+            year: Optional release year for better matching
+
+        Returns:
+            Dictionary with movie metadata or None if not found
+        """
+        if not self._server:
+            raise RuntimeError("Not connected to Plex server. Call connect() first.")
+
+        try:
+            # Search for movies
+            results = self._server.library.search(title=title, libtype='movie')
+
+            if not results:
+                logger.debug(f"Movie not found: {title}")
+                return None
+
+            # If year is provided, try to find exact match
+            if year:
+                for movie in results:
+                    if hasattr(movie, 'year') and movie.year == year:
+                        logger.info(f"Found movie: {movie.title} ({movie.year})")
+                        return self._movie_to_dict(movie)
+
+            # If no year match or year not provided, return first result
+            movie = results[0]
+            logger.info(f"Found movie: {movie.title}" + (f" ({movie.year})" if hasattr(movie, 'year') else ""))
+            return self._movie_to_dict(movie)
+
+        except Exception as e:
+            logger.error(f"Error searching for movie '{title}': {e}")
+            return None
+
+    def _movie_to_dict(self, movie) -> dict:
+        """Convert a Plex movie object to dictionary format.
+
+        Args:
+            movie: Plex movie object
+
+        Returns:
+            Dictionary with movie metadata
+        """
+        movie_data = {
+            'title': movie.title,
+            'type': movie.type,
+            'rating_key': movie.ratingKey,
+            'key': movie.key,
+        }
+
+        if hasattr(movie, 'year'):
+            movie_data['year'] = movie.year
+        if hasattr(movie, 'duration'):
+            movie_data['duration'] = movie.duration
+        if hasattr(movie, 'guid'):
+            movie_data['guid'] = movie.guid
+        if hasattr(movie, 'summary'):
+            movie_data['summary'] = movie.summary
+
+        return movie_data

@@ -1,0 +1,31 @@
+# Tunarr Channel Configuration
+# Define all your channels here
+
+channels:
+  # Example: Plex Playlist Channel
+  - name: "Action Movies"
+    number: 1001
+    source:
+      type: plex_playlist
+      playlist_name: "Action Movies"
+    # Optional: set to false to append to existing programming instead of replacing
+    replace_existing: true
+
+  # Example: Letterboxd List Channel
+  - name: "Oscar Nominees 2026"
+    number: 1002
+    source:
+      type: letterboxd
+      url: "https://letterboxd.com/crew/list/every-film-nominated-for-a-2026-academy-award/"
+    replace_existing: true
+
+  # Example: Another Letterboxd List
+  - name: "Top 250 Films"
+    number: 1003
+    source:
+      type: letterboxd
+      url: "https://letterboxd.com/dave/list/official-top-250-narrative-feature-films/"
+    replace_existing: true
+
+  # You can add as many channels as you want!
+  # Just copy the structure above and modify the details
