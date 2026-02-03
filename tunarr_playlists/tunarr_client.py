@@ -196,18 +196,51 @@ class TunarrClient:
             logger.error(f"Error creating channel: {e}")
             raise
 
+    def get_channel_by_id(self, channel_id: str) -> Optional[Dict[str, Any]]:
+        """Get a channel by ID.
+
+        Args:
+            channel_id: Channel ID
+
+        Returns:
+            Channel dictionary or None if not found
+        """
+        try:
+            response = self._request('GET', f'/channels/{channel_id}')
+            channel = response.json()
+            logger.info(f"Retrieved channel ID: {channel_id}")
+            return channel
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                logger.info(f"Channel not found: {channel_id}")
+                return None
+            raise
+        except Exception as e:
+            logger.error(f"Error fetching channel: {e}")
+            raise
+
     def update_channel(self, channel_id: str, **kwargs) -> Dict[str, Any]:
         """Update an existing channel.
 
         Args:
             channel_id: Channel ID
-            **kwargs: Channel properties to update
+            **kwargs: Channel properties to update (e.g., name, number)
 
         Returns:
             Updated channel dictionary
         """
         try:
-            response = self._request('PUT', f'/channels/{channel_id}', json=kwargs)
+            # Get current channel data
+            current_channel = self.get_channel_by_id(channel_id)
+            if not current_channel:
+                raise ValueError(f"Channel not found: {channel_id}")
+
+            # Update fields
+            for key, value in kwargs.items():
+                current_channel[key] = value
+
+            # Send update with full channel object (PUT expects channel data directly at root level)
+            response = self._request('PUT', f'/channels/{channel_id}', json=current_channel)
             channel = response.json()
             logger.info(f"Updated channel ID: {channel_id}")
             return channel

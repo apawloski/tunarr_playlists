@@ -118,16 +118,10 @@ def sync_playlist_to_channel(
 
     logger.info(f"Found {len(plex_items)} items in Plex playlist")
 
-    # Check if channel exists
-    channel = tunarr_client.get_channel_by_name(channel_name)
+    # Check if channel exists by number (primary identifier)
+    channel = tunarr_client.get_channel_by_number(channel_number)
 
     if not channel:
-        # Check if channel number is already in use
-        existing = tunarr_client.get_channel_by_number(channel_number)
-        if existing:
-            logger.error(f"Channel number {channel_number} is already in use by: {existing.get('name')}")
-            return
-
         # Create new channel
         logger.info(f"Creating new channel: {channel_name} (#{channel_number})")
         channel = tunarr_client.create_channel(
@@ -135,7 +129,13 @@ def sync_playlist_to_channel(
             number=channel_number
         )
     else:
-        logger.info(f"Channel already exists: {channel_name} (ID: {channel.get('id')})")
+        logger.info(f"Channel #{channel_number} exists: {channel.get('name')} (ID: {channel.get('id')})")
+
+        # Update channel name if it has changed
+        if channel.get('name') != channel_name:
+            logger.info(f"Updating channel name: '{channel.get('name')}' -> '{channel_name}'")
+            tunarr_client.update_channel(channel['id'], name=channel_name)
+            channel['name'] = channel_name
 
         # Optionally clear existing programming
         if replace_existing:
@@ -220,16 +220,10 @@ def sync_letterboxd_to_channel(
         logger.error("No movies from Letterboxd list were found in Plex")
         return
 
-    # Check if channel exists
-    channel = tunarr_client.get_channel_by_name(channel_name)
+    # Check if channel exists by number (primary identifier)
+    channel = tunarr_client.get_channel_by_number(channel_number)
 
     if not channel:
-        # Check if channel number is already in use
-        existing = tunarr_client.get_channel_by_number(channel_number)
-        if existing:
-            logger.error(f"Channel number {channel_number} is already in use by: {existing.get('name')}")
-            return
-
         # Create new channel
         logger.info(f"Creating new channel: {channel_name} (#{channel_number})")
         channel = tunarr_client.create_channel(
@@ -237,7 +231,13 @@ def sync_letterboxd_to_channel(
             number=channel_number
         )
     else:
-        logger.info(f"Channel already exists: {channel_name} (ID: {channel.get('id')})")
+        logger.info(f"Channel #{channel_number} exists: {channel.get('name')} (ID: {channel.get('id')})")
+
+        # Update channel name if it has changed
+        if channel.get('name') != channel_name:
+            logger.info(f"Updating channel name: '{channel.get('name')}' -> '{channel_name}'")
+            tunarr_client.update_channel(channel['id'], name=channel_name)
+            channel['name'] = channel_name
 
         # Optionally clear existing programming
         if replace_existing:
