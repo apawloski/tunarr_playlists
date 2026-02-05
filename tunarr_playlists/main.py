@@ -7,6 +7,7 @@ import random
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 from .plex_client import PlexClient
 from .tunarr_client import TunarrClient
@@ -19,6 +20,48 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def read_movie_list_file(file_path: str, config_dir: str) -> List[str]:
+    """Read movie names from a file and deduplicate.
+
+    Args:
+        file_path: Path to the movie list file (can be relative or absolute)
+        config_dir: Directory containing the config file (for resolving relative paths)
+
+    Returns:
+        List of unique movie titles
+
+    Raises:
+        FileNotFoundError: If the file doesn't exist
+    """
+    # Resolve file path (support both absolute and relative paths)
+    if os.path.isabs(file_path):
+        resolved_path = file_path
+    else:
+        resolved_path = os.path.join(config_dir, file_path)
+
+    if not os.path.exists(resolved_path):
+        raise FileNotFoundError(f"Movie list file not found: {resolved_path}")
+
+    logger.info(f"Reading movie list from: {resolved_path}")
+
+    # Read file and process lines
+    with open(resolved_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    # Strip whitespace, filter empty lines
+    movie_titles = [line.strip() for line in lines if line.strip()]
+
+    # Deduplicate while preserving order
+    unique_movies = list(dict.fromkeys(movie_titles))
+
+    duplicates_removed = len(movie_titles) - len(unique_movies)
+    if duplicates_removed > 0:
+        logger.info(f"Removed {duplicates_removed} duplicate(s) from movie list")
+
+    logger.info(f"Loaded {len(unique_movies)} unique movie(s) from file")
+    return unique_movies
 
 
 def convert_plex_to_tunarr_programs(
@@ -295,10 +338,140 @@ def sync_letterboxd_to_channel(
     logger.info(f"  Movies not found: {len(not_found)}")
 
 
+def sync_movie_list_to_channel(
+    plex_client: PlexClient,
+    tunarr_client: TunarrClient,
+    file_path: str,
+    config_dir: str,
+    channel_name: str,
+    channel_number: int,
+    replace_existing: bool = True,
+    randomize: bool = True
+) -> None:
+    """Sync a movie list file to a Tunarr channel.
+
+    Args:
+        plex_client: Connected Plex client
+        tunarr_client: Tunarr client instance
+        file_path: Path to movie list file
+        config_dir: Directory containing config file
+        channel_name: Name for Tunarr channel
+        channel_number: Channel number to use
+        replace_existing: Whether to replace existing programming
+        randomize: Whether to randomize the order of programs
+    """
+    logger.info(f"Starting movie list sync: {file_path} -> '{channel_name}' (#{channel_number})")
+
+    # Read movie list from file
+    try:
+        movie_titles = read_movie_list_file(file_path, config_dir)
+    except FileNotFoundError as e:
+        logger.error(str(e))
+        return
+
+    if not movie_titles:
+        logger.error(f"No movies found in file: {file_path}")
+        return
+
+    # Convert to consistent format (list of dicts with 'title' key)
+    movies = [{'title': title} for title in movie_titles]
+
+    # Search for each movie in Plex (parallelized for speed)
+    plex_items = []
+    not_found = []
+
+    def search_single_movie(movie):
+        """Helper function to search for a single movie."""
+        title = movie['title']
+        plex_movie = plex_client.search_movie(title)
+        return (movie, plex_movie)
+
+    logger.info(f"Searching Plex library for {len(movies)} movies (parallelized)...")
+
+    # Use ThreadPoolExecutor to parallelize searches (max 10 concurrent requests)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        # Submit all search tasks
+        future_to_movie = {executor.submit(search_single_movie, movie): movie for movie in movies}
+
+        # Process results as they complete
+        for future in as_completed(future_to_movie):
+            movie, plex_movie = future.result()
+            title = movie['title']
+
+            if plex_movie:
+                plex_items.append(plex_movie)
+                logger.debug(f"Found: {title}")
+            else:
+                not_found.append(title)
+
+    logger.info(f"Found {len(plex_items)} / {len(movies)} movies in Plex")
+
+    if not_found:
+        logger.warning(f"Could not find {len(not_found)} movies in Plex:")
+        for title in not_found[:10]:  # Show first 10
+            logger.warning(f"  - {title}")
+        if len(not_found) > 10:
+            logger.warning(f"  ... and {len(not_found) - 10} more")
+
+    if not plex_items:
+        logger.error("No movies from list were found in Plex")
+        return
+
+    # Check if channel exists by number (primary identifier)
+    channel = tunarr_client.get_channel_by_number(channel_number)
+
+    if not channel:
+        # Create new channel
+        logger.info(f"Creating new channel: {channel_name} (#{channel_number})")
+        channel = tunarr_client.create_channel(
+            name=channel_name,
+            number=channel_number
+        )
+    else:
+        logger.info(f"Channel #{channel_number} exists: {channel.get('name')} (ID: {channel.get('id')})")
+
+        # Update channel name if it has changed
+        if channel.get('name') != channel_name:
+            logger.info(f"Updating channel name: '{channel.get('name')}' -> '{channel_name}'")
+            tunarr_client.update_channel(channel['id'], name=channel_name)
+            channel['name'] = channel_name
+
+        # Optionally clear existing programming
+        if replace_existing:
+            logger.info("Clearing existing programming")
+            tunarr_client.delete_channel_programming(channel['id'])
+
+    # Get Tunarr media source ID for this Plex server
+    media_source_id = tunarr_client.get_plex_media_source_id(plex_client.server_name)
+    if not media_source_id:
+        logger.error(f"Plex server '{plex_client.server_name}' not configured in Tunarr. Please add it first.")
+        return
+
+    # Convert Plex items to Tunarr programs
+    programs = convert_plex_to_tunarr_programs(plex_items, media_source_id)
+
+    # Randomize if requested
+    if randomize:
+        logger.info("Randomizing program order")
+        random.shuffle(programs)
+
+    # Add programs to channel
+    logger.info(f"Adding {len(programs)} programs to channel")
+    tunarr_client.add_programs_to_channel(channel['id'], programs)
+
+    logger.info("✓ Sync completed successfully!")
+    logger.info(f"  Channel: {channel_name} (#{channel_number})")
+    logger.info(f"  Programs: {len(programs)}")
+    logger.info(f"  Movies in list: {len(movies)}")
+    logger.info(f"  Movies found in Plex: {len(plex_items)}")
+    logger.info(f"  Movies not found: {len(not_found)}")
+
+
 def process_channel(
     plex_client: PlexClient,
     tunarr_client: TunarrClient,
-    channel_config: ChannelConfig
+    channel_config: ChannelConfig,
+    config_dir: str
 ) -> bool:
     """Process a single channel configuration.
 
@@ -306,6 +479,7 @@ def process_channel(
         plex_client: Connected Plex client
         tunarr_client: Tunarr client instance
         channel_config: Channel configuration
+        config_dir: Directory containing config file
 
     Returns:
         True if successful, False otherwise
@@ -330,6 +504,17 @@ def process_channel(
                 plex_client=plex_client,
                 tunarr_client=tunarr_client,
                 letterboxd_url=channel_config.letterboxd_url,
+                channel_name=channel_config.name,
+                channel_number=channel_config.number,
+                replace_existing=channel_config.replace_existing,
+                randomize=channel_config.randomize
+            )
+        elif channel_config.is_movie_list:
+            sync_movie_list_to_channel(
+                plex_client=plex_client,
+                tunarr_client=tunarr_client,
+                file_path=channel_config.file_path,
+                config_dir=config_dir,
                 channel_name=channel_config.name,
                 channel_number=channel_config.number,
                 replace_existing=channel_config.replace_existing,
@@ -367,6 +552,9 @@ def main():
         config_loader = ConfigLoader(channels_config_path)
         channels = config_loader.load_channels()
 
+        # Get config directory for resolving relative file paths
+        config_dir = os.path.dirname(os.path.abspath(channels_config_path))
+
         logger.info(f"Found {len(channels)} channel(s) to process")
 
     except FileNotFoundError as e:
@@ -389,7 +577,7 @@ def main():
         # Process all channels
         results = []
         for channel in channels:
-            success = process_channel(plex_client, tunarr_client, channel)
+            success = process_channel(plex_client, tunarr_client, channel, config_dir)
             results.append((channel.name, success))
 
         # Print summary

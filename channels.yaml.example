@@ -31,5 +31,14 @@ channels:
     replace_existing: true
     randomize: true
 
+  # Example: Movie List from File
+  - name: "My Custom Movies"
+    number: 1004
+    source:
+      type: movie_list
+      file_path: "movies.txt"  # Can be relative or absolute path
+    replace_existing: true
+    randomize: true
+
   # You can add as many channels as you want!
   # Just copy the structure above and modify the details

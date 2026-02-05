@@ -7,10 +7,12 @@ A Python tool to sync Plex playlists and Letterboxd lists to Tunarr channels. Au
 - **Multi-channel management**: Define and sync dozens of channels in a single configuration file
 - **Plex playlist sync**: Creates Tunarr channels from Plex playlists
 - **Letterboxd list sync**: Creates Tunarr channels from Letterboxd lists
+- **Movie list file sync**: Creates Tunarr channels from plain text files with movie names
 - **Content randomization**: Randomize channel content order for variety (enabled by default)
-- **Automatic Plex search**: Searches your Plex library for movies from Letterboxd lists
+- **Automatic Plex search**: Searches your Plex library for movies from Letterboxd lists and movie files
 - **Smart matching**: Matches movies by title and year for accuracy
-- **Graceful handling**: Handles cases where Letterboxd movies aren't in Plex
+- **Graceful handling**: Handles cases where movies aren't found in Plex
+- **Automatic deduplication**: Removes duplicate entries from movie list files
 - **Batch processing**: Sync all channels with a single command
 - **Flexible updates**: Replace or append to existing channel programming
 - **Clear reporting**: Detailed logs and summary of sync results
@@ -58,6 +60,7 @@ cp channels.yaml.example channels.yaml
    - `source`: Where the content comes from
      - For Plex playlists: `type: plex_playlist` and `playlist_name`
      - For Letterboxd lists: `type: letterboxd` and `url`
+     - For movie list files: `type: movie_list` and `file_path`
    - `replace_existing`: Whether to replace or append to existing programming (default: true)
    - `randomize`: Whether to randomize program order (default: true)
 
@@ -70,9 +73,10 @@ The `channels.yaml` file uses YAML format. Each channel must have:
 - **name** (required): Display name for the channel in Tunarr
 - **number** (required): Channel number (must be unique)
 - **source** (required): Content source configuration
-  - **type**: Either `plex_playlist` or `letterboxd`
+  - **type**: Either `plex_playlist`, `letterboxd`, or `movie_list`
   - For `plex_playlist`: Include `playlist_name`
   - For `letterboxd`: Include `url`
+  - For `movie_list`: Include `file_path` (can be relative or absolute)
 - **replace_existing** (optional): `true` to replace channel content, `false` to append (default: `true`)
 - **randomize** (optional): `true` to randomize program order, `false` to keep original order (default: `true`)
 
@@ -115,6 +119,7 @@ The script will:
 3. Process each channel in order:
    - **For Plex playlists**: Fetch items from the playlist and add to channel
    - **For Letterboxd lists**: Scrape the list, search Plex for each movie, add found movies to channel
+   - **For movie list files**: Read movies from file, deduplicate, search Plex for each movie, add found movies to channel
 4. Create channels if they don't exist
 5. Update existing channels (replace or append based on config)
 6. Display a summary of results
@@ -193,9 +198,26 @@ channels:
       playlist_name: "Best Sitcoms"
     replace_existing: false  # Append instead of replace
     randomize: true
+
+  # Movie list from file
+  - name: "Classic Films"
+    number: 1005
+    source:
+      type: movie_list
+      file_path: "classics.txt"  # One movie per line
+    replace_existing: true
+    randomize: false  # Keep file order
 ```
 
-Running `uv run tunarr-sync` will process all 4 channels automatically!
+Example `classics.txt` file:
+```
+The Godfather
+Casablanca
+Citizen Kane
+The Shawshank Redemption
+```
+
+Running `uv run tunarr-sync` will process all 5 channels automatically!
 
 ## Troubleshooting
 
@@ -208,7 +230,8 @@ Running `uv run tunarr-sync` will process all 4 channels automatically!
 - **Connection errors**: Verify your URLs and tokens are correct in `.env`
 - **Playlist not found**: Check the exact name of your Plex playlist (case-sensitive)
 - **Letterboxd list empty**: Verify the URL is correct and publicly accessible
-- **Movies not found in Plex**: The tool searches by title and year. Ensure movie titles in Plex match Letterboxd
+- **Movie list file not found**: Ensure the file path is correct. Use relative paths (relative to channels.yaml) or absolute paths
+- **Movies not found in Plex**: The tool searches by title and year. Ensure movie titles in Plex match the list
 - **Channel creation fails**: Verify Tunarr API permissions and available channel numbers
 - **Channel number conflict**: Each channel must have a unique number. Check existing Tunarr channels
 

@@ -33,8 +33,8 @@ class ChannelConfig:
 
         # Validate source type
         source_type = self.source.get('type')
-        if source_type not in ['plex_playlist', 'letterboxd']:
-            raise ValueError(f"Invalid source type: {source_type}. Must be 'plex_playlist' or 'letterboxd'")
+        if source_type not in ['plex_playlist', 'letterboxd', 'movie_list']:
+            raise ValueError(f"Invalid source type: {source_type}. Must be 'plex_playlist', 'letterboxd', or 'movie_list'")
 
         # Validate source-specific fields
         if source_type == 'plex_playlist':
@@ -43,6 +43,9 @@ class ChannelConfig:
         elif source_type == 'letterboxd':
             if not self.source.get('url'):
                 raise ValueError("'url' is required for letterboxd source type")
+        elif source_type == 'movie_list':
+            if not self.source.get('file_path'):
+                raise ValueError("'file_path' is required for movie_list source type")
 
     @property
     def source_type(self) -> str:
@@ -60,6 +63,11 @@ class ChannelConfig:
         return self.source_type == 'letterboxd'
 
     @property
+    def is_movie_list(self) -> bool:
+        """Check if this is a movie list file source."""
+        return self.source_type == 'movie_list'
+
+    @property
     def playlist_name(self) -> Optional[str]:
         """Get Plex playlist name (if applicable)."""
         return self.source.get('playlist_name')
@@ -68,6 +76,11 @@ class ChannelConfig:
     def letterboxd_url(self) -> Optional[str]:
         """Get Letterboxd URL (if applicable)."""
         return self.source.get('url')
+
+    @property
+    def file_path(self) -> Optional[str]:
+        """Get movie list file path (if applicable)."""
+        return self.source.get('file_path')
 
     def __repr__(self) -> str:
         """String representation."""
