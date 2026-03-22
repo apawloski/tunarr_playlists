@@ -33,8 +33,8 @@ class ChannelConfig:
 
         # Validate source type
         source_type = self.source.get('type')
-        if source_type not in ['plex_playlist', 'letterboxd', 'movie_list']:
-            raise ValueError(f"Invalid source type: {source_type}. Must be 'plex_playlist', 'letterboxd', or 'movie_list'")
+        if source_type not in ['plex_playlist', 'letterboxd', 'movie_list', 'llm_theme']:
+            raise ValueError(f"Invalid source type: {source_type}. Must be 'plex_playlist', 'letterboxd', 'movie_list', or 'llm_theme'")
 
         # Validate source-specific fields
         if source_type == 'plex_playlist':
@@ -46,6 +46,9 @@ class ChannelConfig:
         elif source_type == 'movie_list':
             if not self.source.get('file_path'):
                 raise ValueError("'file_path' is required for movie_list source type")
+        elif source_type == 'llm_theme':
+            if not self.source.get('theme'):
+                raise ValueError("'theme' is required for llm_theme source type")
 
     @property
     def source_type(self) -> str:
@@ -81,6 +84,26 @@ class ChannelConfig:
     def file_path(self) -> Optional[str]:
         """Get movie list file path (if applicable)."""
         return self.source.get('file_path')
+
+    @property
+    def is_llm_theme(self) -> bool:
+        """Check if this is an LLM theme source."""
+        return self.source_type == 'llm_theme'
+
+    @property
+    def llm_theme(self) -> Optional[str]:
+        """Get LLM theme description (if applicable)."""
+        return self.source.get('theme')
+
+    @property
+    def llm_count(self) -> int:
+        """Get LLM movie count (default 50)."""
+        return self.source.get('count', 50)
+
+    @property
+    def llm_filters(self) -> Optional[Dict[str, Any]]:
+        """Get LLM filters (if applicable)."""
+        return self.source.get('filters')
 
     def __repr__(self) -> str:
         """String representation."""

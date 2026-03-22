@@ -284,21 +284,23 @@ class TunarrClient:
 
         for i, program in enumerate(programs):
             # Check if this program already exists in Tunarr
-            # Match by externalSourceId and externalKey
+            # Batch lookup response uses 'mediaSourceId' and 'externalId' field names
             tunarr_uuid = None
             for uuid, prog_data in existing_programs.items():
-                if (prog_data.get('externalSourceId') == program['externalSourceId'] and
-                    prog_data.get('externalKey') == program['externalKey']):
+                if (prog_data.get('mediaSourceId') == program['externalSourceId'] and
+                    prog_data.get('externalId') == program['externalKey']):
                     tunarr_uuid = uuid
                     break
 
             if tunarr_uuid:
                 # Program exists, reference it as persisted
+                prog_data = existing_programs[tunarr_uuid]
+                duration = prog_data.get('duration') or program['duration']
                 logger.debug(f"Found existing program: {program['title']} -> {tunarr_uuid}")
                 lineup.append({
                     'type': 'persisted',
                     'programId': tunarr_uuid,
-                    'duration': program['duration']
+                    'duration': duration
                 })
             else:
                 # Program doesn't exist, add it as new
@@ -322,26 +324,6 @@ class TunarrClient:
             logger.info(f"Added {len(programs)} programs to channel {channel_id}")
         except Exception as e:
             logger.error(f"Error adding programs to channel: {e}")
-            raise
-
-    def delete_channel_programming(self, channel_id: str) -> None:
-        """Delete all programming from a channel.
-
-        Args:
-            channel_id: Channel ID
-        """
-        try:
-            self._request('DELETE', f'/channels/{channel_id}/programming')
-            logger.info(f"Deleted all programming from channel {channel_id}")
-        except requests.exceptions.HTTPError as e:
-            # 404 is OK - it means there's no programming to delete
-            if e.response.status_code == 404:
-                logger.info(f"No programming to delete from channel {channel_id}")
-            else:
-                logger.error(f"Error deleting channel programming: {e}")
-                raise
-        except Exception as e:
-            logger.error(f"Error deleting channel programming: {e}")
             raise
 
     def get_channel_programming(self, channel_id: str) -> List[Dict[str, Any]]:

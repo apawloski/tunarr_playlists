@@ -12,6 +12,7 @@ from pathlib import Path
 from .plex_client import PlexClient
 from .tunarr_client import TunarrClient
 from .letterboxd_client import LetterboxdClient
+from .llm_client import LlmThemeClient
 from .config import ConfigLoader, ChannelConfig
 
 # Configure logging
@@ -66,19 +67,19 @@ def read_movie_list_file(file_path: str, config_dir: str) -> List[str]:
 
 def convert_plex_to_tunarr_programs(
     plex_items: List[Dict[str, Any]],
-    media_source_id: str
+    media_source_id: str,
+    server_name: str
 ) -> List[Dict[str, Any]]:
     """Convert Plex playlist items to Tunarr program format.
 
     Args:
         plex_items: List of Plex item dictionaries
         media_source_id: Tunarr media source ID for the Plex server
+        server_name: Plex server friendly name
 
     Returns:
         List of Tunarr program dictionaries
     """
-    import uuid
-
     programs = []
 
     for item in plex_items:
@@ -91,11 +92,9 @@ def convert_plex_to_tunarr_programs(
         elif item_type == 'track':
             subtype = 'track'
         else:
-            # Default to movie for movies and unknown types
             subtype = 'movie'
 
         # Generate uniqueId in the format required by Tunarr: sourceType|sourceId|externalKey
-        # This format is required for Tunarr to properly track programs
         program_id = f"plex|{media_source_id}|{rating_key}"
 
         # Build Tunarr program object with all required fields
@@ -108,14 +107,14 @@ def convert_plex_to_tunarr_programs(
             'duration': item.get('duration', 0),
             'subtype': subtype,
             'externalSourceType': 'plex',
-            'externalSourceName': media_source_id,
+            'externalSourceName': server_name,
             'externalSourceId': media_source_id,
             'externalKey': rating_key,
             'externalIds': [
                 {
                     'type': 'multi',
                     'source': 'plex',
-                    'sourceId': media_source_id,
+                    'sourceId': server_name,
                     'id': rating_key
                 }
             ]
@@ -184,11 +183,6 @@ def sync_playlist_to_channel(
             tunarr_client.update_channel(channel['id'], name=channel_name)
             channel['name'] = channel_name
 
-        # Optionally clear existing programming
-        if replace_existing:
-            logger.info("Clearing existing programming")
-            tunarr_client.delete_channel_programming(channel['id'])
-
     # Get Tunarr media source ID for this Plex server
     media_source_id = tunarr_client.get_plex_media_source_id(plex_client.server_name)
     if not media_source_id:
@@ -196,14 +190,14 @@ def sync_playlist_to_channel(
         return
 
     # Convert Plex items to Tunarr programs
-    programs = convert_plex_to_tunarr_programs(plex_items, media_source_id)
+    programs = convert_plex_to_tunarr_programs(plex_items, media_source_id, plex_client.server_name)
 
     # Randomize if requested
     if randomize:
         logger.info("Randomizing program order")
         random.shuffle(programs)
 
-    # Add programs to channel
+    # Add programs to channel (append=False replaces existing programming)
     logger.info(f"Adding {len(programs)} programs to channel")
     tunarr_client.add_programs_to_channel(channel['id'], programs)
 
@@ -307,11 +301,6 @@ def sync_letterboxd_to_channel(
             tunarr_client.update_channel(channel['id'], name=channel_name)
             channel['name'] = channel_name
 
-        # Optionally clear existing programming
-        if replace_existing:
-            logger.info("Clearing existing programming")
-            tunarr_client.delete_channel_programming(channel['id'])
-
     # Get Tunarr media source ID for this Plex server
     media_source_id = tunarr_client.get_plex_media_source_id(plex_client.server_name)
     if not media_source_id:
@@ -319,14 +308,14 @@ def sync_letterboxd_to_channel(
         return
 
     # Convert Plex items to Tunarr programs
-    programs = convert_plex_to_tunarr_programs(plex_items, media_source_id)
+    programs = convert_plex_to_tunarr_programs(plex_items, media_source_id, plex_client.server_name)
 
     # Randomize if requested
     if randomize:
         logger.info("Randomizing program order")
         random.shuffle(programs)
 
-    # Add programs to channel
+    # Add programs to channel (append=False replaces existing programming)
     logger.info(f"Adding {len(programs)} programs to channel")
     tunarr_client.add_programs_to_channel(channel['id'], programs)
 
@@ -436,10 +425,127 @@ def sync_movie_list_to_channel(
             tunarr_client.update_channel(channel['id'], name=channel_name)
             channel['name'] = channel_name
 
-        # Optionally clear existing programming
-        if replace_existing:
-            logger.info("Clearing existing programming")
-            tunarr_client.delete_channel_programming(channel['id'])
+    # Get Tunarr media source ID for this Plex server
+    media_source_id = tunarr_client.get_plex_media_source_id(plex_client.server_name)
+    if not media_source_id:
+        logger.error(f"Plex server '{plex_client.server_name}' not configured in Tunarr. Please add it first.")
+        return
+
+    # Convert Plex items to Tunarr programs
+    programs = convert_plex_to_tunarr_programs(plex_items, media_source_id, plex_client.server_name)
+
+    # Randomize if requested
+    if randomize:
+        logger.info("Randomizing program order")
+        random.shuffle(programs)
+
+    # Add programs to channel (append=False replaces existing programming)
+    logger.info(f"Adding {len(programs)} programs to channel")
+    tunarr_client.add_programs_to_channel(channel['id'], programs)
+
+    logger.info("✓ Sync completed successfully!")
+    logger.info(f"  Channel: {channel_name} (#{channel_number})")
+    logger.info(f"  Programs: {len(programs)}")
+    logger.info(f"  Movies in list: {len(movies)}")
+    logger.info(f"  Movies found in Plex: {len(plex_items)}")
+    logger.info(f"  Movies not found: {len(not_found)}")
+
+
+def sync_llm_theme_to_channel(
+    plex_client: PlexClient,
+    tunarr_client: TunarrClient,
+    theme: str,
+    count: int,
+    filters: Any,
+    anthropic_api_key: str,
+    channel_name: str,
+    channel_number: int,
+    replace_existing: bool = True,
+    randomize: bool = True
+) -> None:
+    """Sync an LLM-generated themed movie list to a Tunarr channel.
+
+    Args:
+        plex_client: Connected Plex client
+        tunarr_client: Tunarr client instance
+        theme: Theme description for movie generation
+        count: Number of movies to generate
+        filters: Optional filters (year_min, year_max, min_rating)
+        anthropic_api_key: Anthropic API key
+        channel_name: Name for Tunarr channel
+        channel_number: Channel number to use
+        replace_existing: Whether to replace existing programming
+        randomize: Whether to randomize the order of programs
+    """
+    logger.info(f"Starting LLM theme sync: '{theme}' -> '{channel_name}' (#{channel_number})")
+
+    # Generate movie list from LLM
+    llm_client = LlmThemeClient(anthropic_api_key)
+    movies = llm_client.generate_movie_list(theme, count, filters)
+
+    if not movies:
+        logger.error(f"No movies generated for theme: {theme}")
+        return
+
+    logger.info(f"LLM generated {len(movies)} movie suggestions")
+
+    # Search for each movie in Plex (parallelized for speed)
+    plex_items = []
+    not_found = []
+
+    def search_single_movie(movie):
+        """Helper function to search for a single movie."""
+        title = movie['title']
+        year = movie.get('year')
+        plex_movie = plex_client.search_movie(title, year)
+        return (movie, plex_movie)
+
+    logger.info(f"Searching Plex library for {len(movies)} movies (parallelized)...")
+
+    # Use ThreadPoolExecutor to parallelize searches (max 10 concurrent requests)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_movie = {executor.submit(search_single_movie, movie): movie for movie in movies}
+
+        for future in as_completed(future_to_movie):
+            movie, plex_movie = future.result()
+            title = movie['title']
+            year = movie.get('year')
+
+            if plex_movie:
+                plex_items.append(plex_movie)
+                logger.debug(f"Found: {title}" + (f" ({year})" if year else ""))
+            else:
+                not_found.append(f"{title}" + (f" ({year})" if year else ""))
+
+    logger.info(f"Found {len(plex_items)} / {len(movies)} movies in Plex")
+
+    if not_found:
+        logger.warning(f"Could not find {len(not_found)} movies in Plex:")
+        for title in not_found[:10]:
+            logger.warning(f"  - {title}")
+        if len(not_found) > 10:
+            logger.warning(f"  ... and {len(not_found) - 10} more")
+
+    if not plex_items:
+        logger.error("No movies from LLM theme were found in Plex")
+        return
+
+    # Check if channel exists by number (primary identifier)
+    channel = tunarr_client.get_channel_by_number(channel_number)
+
+    if not channel:
+        logger.info(f"Creating new channel: {channel_name} (#{channel_number})")
+        channel = tunarr_client.create_channel(
+            name=channel_name,
+            number=channel_number
+        )
+    else:
+        logger.info(f"Channel #{channel_number} exists: {channel.get('name')} (ID: {channel.get('id')})")
+
+        if channel.get('name') != channel_name:
+            logger.info(f"Updating channel name: '{channel.get('name')}' -> '{channel_name}'")
+            tunarr_client.update_channel(channel['id'], name=channel_name)
+            channel['name'] = channel_name
 
     # Get Tunarr media source ID for this Plex server
     media_source_id = tunarr_client.get_plex_media_source_id(plex_client.server_name)
@@ -448,21 +554,22 @@ def sync_movie_list_to_channel(
         return
 
     # Convert Plex items to Tunarr programs
-    programs = convert_plex_to_tunarr_programs(plex_items, media_source_id)
+    programs = convert_plex_to_tunarr_programs(plex_items, media_source_id, plex_client.server_name)
 
     # Randomize if requested
     if randomize:
         logger.info("Randomizing program order")
         random.shuffle(programs)
 
-    # Add programs to channel
+    # Add programs to channel (append=False replaces existing programming)
     logger.info(f"Adding {len(programs)} programs to channel")
     tunarr_client.add_programs_to_channel(channel['id'], programs)
 
     logger.info("✓ Sync completed successfully!")
     logger.info(f"  Channel: {channel_name} (#{channel_number})")
+    logger.info(f"  Theme: {theme}")
     logger.info(f"  Programs: {len(programs)}")
-    logger.info(f"  Movies in list: {len(movies)}")
+    logger.info(f"  Movies suggested by LLM: {len(movies)}")
     logger.info(f"  Movies found in Plex: {len(plex_items)}")
     logger.info(f"  Movies not found: {len(not_found)}")
 
@@ -515,6 +622,23 @@ def process_channel(
                 tunarr_client=tunarr_client,
                 file_path=channel_config.file_path,
                 config_dir=config_dir,
+                channel_name=channel_config.name,
+                channel_number=channel_config.number,
+                replace_existing=channel_config.replace_existing,
+                randomize=channel_config.randomize
+            )
+        elif channel_config.is_llm_theme:
+            anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+            if not anthropic_api_key:
+                logger.error("ANTHROPIC_API_KEY environment variable is required for llm_theme source type")
+                return False
+            sync_llm_theme_to_channel(
+                plex_client=plex_client,
+                tunarr_client=tunarr_client,
+                theme=channel_config.llm_theme,
+                count=channel_config.llm_count,
+                filters=channel_config.llm_filters,
+                anthropic_api_key=anthropic_api_key,
                 channel_name=channel_config.name,
                 channel_number=channel_config.number,
                 replace_existing=channel_config.replace_existing,
